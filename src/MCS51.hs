@@ -5,7 +5,6 @@ module MCS51
     , module MCS51.CPU
     , module MCS51.Exec
     , module MCS51.Interrupt
-    , module MCS51.TH
     ) where
 
 import MCS51.Core
@@ -14,4 +13,3 @@ import MCS51.ALU
 import MCS51.CPU
 import MCS51.Exec
 import MCS51.Interrupt
-import MCS51.TH

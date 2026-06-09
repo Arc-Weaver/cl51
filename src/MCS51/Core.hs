@@ -124,7 +124,7 @@ readDirect c a
     | a == 0x83 = dph c
     | a == 0xA8 = ie c
     | a == 0xB8 = ip c
-    | a == 0xD0 = pack (psw c)
+    | a == 0xD0 = unpack (pack (psw c))
     | a == 0xE0 = acc c
     | a == 0xF0 = breg c
     | otherwise = 0
@@ -153,21 +153,6 @@ setDptr c v = c
     { dph = truncateB (v `shiftR` 8)
     , dpl = truncateB v
     }
-
--- ---------------------------------------------------------------------------
--- Parity helper
--- ---------------------------------------------------------------------------
-
--- | Compute even parity of an 8-bit value (number of 1-bits mod 2).
-parity :: MCS51Word -> Bit
-parity w = foldl xor 0 (map (unpack . slice d0 d0 . pack . (`shiftR` i) $ w) [0..7 :: Int])
-  where
-    xor :: Bit -> Bit -> Bit
-    xor a b = unpack (pack a `xor` pack b)
-
--- | Update the parity bit in PSW from the current ACC value.
-updateParity :: CoreData -> CoreData
-updateParity c = c { psw = (psw c) { psw_p = parity (acc c) } }
 
 -- ---------------------------------------------------------------------------
 -- Instruction fetch/decode pipeline

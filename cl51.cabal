@@ -89,9 +89,8 @@ common common-options
     ghc-typelits-extra,
     ghc-typelits-knownnat,
 
-    -- for MCS51.TH
-    template-haskell >= 2.16,
-    bytestring
+    isacle,
+    template-haskell >= 2.16
 
 
 -- ---------------------------------------------------------------------------
@@ -110,17 +109,6 @@ library
   import: common-options
   hs-source-dirs: src example
   exposed-modules:
-    -- Generic CPU infrastructure (architecture-agnostic)
-    Core
-    Core.Memory
-    Core.ALU
-    Core.Decode
-    Core.Periph.GPIO
-    -- Harvard-architecture building blocks
-    Core.Harvard
-    Core.Harvard.ISA
-    Core.Harvard.CPU
-    Core.Harvard.Pipeline
     -- MCS-51 implementation
     MCS51
     MCS51.Core
@@ -129,7 +117,6 @@ library
     MCS51.CPU
     MCS51.Exec
     MCS51.Interrupt
-    MCS51.TH
     -- Standalone SoC example (see example/ directory)
     Example.Project
   default-language: Haskell2010

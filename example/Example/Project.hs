@@ -8,7 +8,7 @@ import MCS51.Core       (MCS51Addr, MCS51Word)
 import MCS51.CPU        (mcs51Core)
 import MCS51.Interrupt  (interruptArbiter)
 import Core.Periph.GPIO (gpioUnit)
-import MCS51.TH         (loadMcs51Bin)
+import Core.TH          (loadBin8)
 
 -- ---------------------------------------------------------------------------
 -- Clock domain
@@ -22,8 +22,8 @@ createDomain vSystem{vName="Dom10MHz", vPeriod=hzToPeriod 10e6}
 
 -- | MCS-51 code ROM loaded at compile time from the assembled binary.
 --   The ROM is byte-addressed; each element is one 8-bit fetch word.
-testProgram :: Vec 256 (BitVector 8)
-testProgram = $(loadMcs51Bin "example/Example/program.bin")
+testProgram :: Vec 256 MCS51Word
+testProgram = $(loadBin8 "example/Example/program.bin")
 
 -- ---------------------------------------------------------------------------
 -- Memory map

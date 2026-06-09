@@ -3,8 +3,6 @@ module MCS51.ALU where
 import Clash.Prelude
 import MCS51.Core
 import MCS51.InstructionSet
-import Core.ALU
-
 -- ---------------------------------------------------------------------------
 -- Bit addressing helpers
 -- ---------------------------------------------------------------------------
@@ -204,12 +202,12 @@ mcs51Compute instr mval c = case instr of
             hi  = a `shiftR` 4
             (a1, cy1) = if lo > 9 || ac0 == 1
                         then let r9 = zeroExtend a + (6 :: Unsigned 9)
-                             in (truncateB r9, unpack (slice d8 d8 (pack r9)))
+                             in (truncateB r9, unpack (slice d8 d8 (pack r9)) :: Bit)
                         else (a, 0)
             hi1 = a1 `shiftR` 4
             (a2, cy2) = if hi1 > 9 || cy0 == 1 || cy1 == 1
                         then let r9 = zeroExtend a1 + (0x60 :: Unsigned 9)
-                             in (truncateB r9, unpack (slice d8 d8 (pack r9)))
+                             in (truncateB r9, unpack (slice d8 d8 (pack r9)) :: Bit)
                         else (a1, 0)
             newCy = unpack (pack cy1 .|. pack cy2 .|. pack cy0)
             p     = parityBit a2
@@ -547,12 +545,3 @@ mcs51Jump instr seqPC c = case instr of
 
 complement1 :: Bit -> Bit
 complement1 b = unpack (complement (pack b :: BitVector 1))
-
--- | Build the ALU record for use in Core.Harvard.CPU.runInstruction.
-mcs51XAlu :: ALU Instruction CoreData MCS51Addr MCS51Addr MCS51Word
-mcs51XAlu = ALU
-    { read    = mcs51Read
-    , compute = mcs51Compute
-    , write   = mcs51Write
-    , jump    = \instr c -> mcs51Jump instr (pc c) c
-    }
