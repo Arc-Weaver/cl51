@@ -1,0 +1,12 @@
+cradle:
+  cabal:
+    - path: "./src"
+      component: "lib:cl51"
+    - path: "./tests/doctests.hs"
+      component: "cl51:doctests"
+    - path: "./tests"
+      component: "cl51:test-library"
+    - path: "./bin/Clashi.hs"
+      component: "cl51:exe:clashi"
+    - path: "./bin/Clash.hs"
+      component: "cl51:exe:clash"
