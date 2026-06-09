@@ -6,7 +6,7 @@ module Example.Project where
 import Clash.Prelude
 import MCS51.Core       (MCS51Addr, MCS51Word)
 import MCS51.CPU        (mcs51Core)
-import MCS51.Interrupt  (interruptArbiter)
+import Core.Periph.Interrupt (interruptArbiter)
 import Core.Periph.GPIO (gpioUnit)
 import Core.TH          (loadBin8)
 

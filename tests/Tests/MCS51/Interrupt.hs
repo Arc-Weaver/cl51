@@ -10,7 +10,7 @@ import qualified Hedgehog as H
 import qualified Clash.Prelude as C
 
 import MCS51.Core    (MCS51Addr, zeroState, CoreData(..))
-import MCS51.Interrupt (interruptArbiter)
+import Core.Periph.Interrupt (interruptArbiter)
 import MCS51.CPU     (CPUState(..), Stage(..), cpuStep)
 import MCS51.Exec    (runPipeline)
 

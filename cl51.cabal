@@ -116,7 +116,6 @@ library
     MCS51.ALU
     MCS51.CPU
     MCS51.Exec
-    MCS51.Interrupt
     -- Standalone SoC example (see example/ directory)
     Example.Project
   default-language: Haskell2010
@@ -167,6 +166,7 @@ test-suite test-library
     Tests.MCS51.CPU
   build-depends:
     cl51,
+    isacle,
     QuickCheck,
     clash-prelude-hedgehog,
     hedgehog,
