@@ -8,7 +8,6 @@ import Test.Tasty.Hedgehog
 import qualified Hedgehog as H
 
 import qualified Clash.Prelude as C
-import Clash.Prelude (Bit)
 
 import MCS51.Core    (MCS51Addr, zeroState, CoreData(..))
 import MCS51.Interrupt (interruptArbiter)
@@ -95,14 +94,15 @@ prop_cpu_irq_ignored_when_disabled = H.withTests 1 . H.property $ do
     -- IE.EA remains 0
     (ie (cpuCore s1) C..&. 0x80) H.=== (0 :: C.Unsigned 8)
 
--- After acceptance the CPU completes the CALL push and jumps to the vector.
+-- After acceptance the CPU completes the CALL push and jumps to the vector
+-- in a single step (CALL/interrupt is now single-cycle in the CPU).
 prop_cpu_irq_jumps_to_vector :: H.Property
 prop_cpu_irq_jumps_to_vector = H.withTests 1 . H.property $ do
     let s0 = iFetch1 zeroState
     let (s1, _) = cpuStep s0 (0x00, 0x00, Just (0x0003 :: MCS51Addr))
-    let (s2, _) = cpuStep s1 (0x00, 0x00, Nothing)
-    cpuStage s2     H.=== SFetch1
-    pc (cpuCore s2) H.=== (0x0003 :: C.Unsigned 16)
+    -- After one step the CPU is already at SFetch1 pointing at the vector.
+    cpuStage s1     H.=== SFetch1
+    pc (cpuCore s1) H.=== (0x0003 :: C.Unsigned 16)
 
 -- ---------------------------------------------------------------------------
 -- RETI restores IE.EA
@@ -111,18 +111,11 @@ prop_cpu_irq_jumps_to_vector = H.withTests 1 . H.property $ do
 -- | Run a 1-byte instruction from a small program.
 execReti :: CoreData -> CoreData
 execReti core =
-    -- RETI = 0x32; runWithPC will execute it and pop zero return address
-    -- We just test mcs51Compute directly which doesn't handle RETI (CPU does),
-    -- so we use the cpuStep state machine instead.
+    -- RETI is a single-cycle instruction: it reads the return address from
+    -- IRAM (iram[sp] for hi, iram[sp-1] for lo) and restores IE.EA.
     let s0 = CPUState (core { ie = 0x00, sp = 0x09 }) SFetch1
-        -- Simulate stack with two bytes = 0x00 (return to 0x0000)
-        -- Step 1: fetch RETI (0x32) → startRet True
         (s1, _) = cpuStep s0 (0x32, 0x00, Nothing)
-        -- Step 2: pop hi byte (0x00)
-        (s2, _) = cpuStep s1 (0x00, 0x00, Nothing)
-        -- Step 3: pop lo byte (0x00), restore IE.EA
-        (s3, _) = cpuStep s2 (0x00, 0x00, Nothing)
-    in cpuCore s3
+    in cpuCore s1
 
 prop_reti_restores_ea :: H.Property
 prop_reti_restores_ea = H.withTests 1 . H.property $ do
@@ -137,27 +130,23 @@ prop_full_interrupt_reti_cycle :: H.Property
 prop_full_interrupt_reti_cycle = H.withTests 1 . H.property $ do
     let s0 = iFetch1 zeroState
 
-    -- Step 1: IRQ arrives → IE.EA cleared
+    -- Step 1: IRQ arrives → CPU accepts interrupt in one step (push PC,
+    -- clear IE.EA, jump to vector).
     let (s1, _) = cpuStep s0 (0x00, 0x00, Just (0x0003 :: MCS51Addr))
     (ie (cpuCore s1) C..&. 0x80) H.=== (0 :: C.Unsigned 8)
+    cpuStage s1     H.=== SFetch1
+    pc (cpuCore s1) H.=== (0x0003 :: C.Unsigned 16)
 
-    -- Step 2: CALL push completes → jump to ISR
+    -- Step 2: NOP at ISR entry → advances pc to 0x0004.
     let (s2, _) = cpuStep s1 (0x00, 0x00, Nothing)
-    cpuStage s2     H.=== SFetch1
-    pc (cpuCore s2) H.=== (0x0003 :: C.Unsigned 16)
+    cpuStage s2 H.=== SFetch1
 
-    -- Step 3: fetch RETI (0x32) → begin stack pop
+    -- Step 3: RETI at 0x0004 → single-cycle: pops return address (0x0000)
+    -- from IRAM and restores IE.EA.
     let (s3, _) = cpuStep s2 (0x32, 0x00, Nothing)
-    cpuStage s3 H.=== SRetRead1 True
-
-    -- Step 4: receive hi byte of return address (0x00 pushed earlier)
-    let (s4, _) = cpuStep s3 (0x00, 0x00, Nothing)
-
-    -- Step 5: receive lo byte → PC restored, IE.EA re-enabled
-    let (s5, _) = cpuStep s4 (0x00, 0x00, Nothing)
-    cpuStage s5             H.=== SFetch1
-    pc (cpuCore s5)         H.=== (0x0000 :: C.Unsigned 16)
-    (ie (cpuCore s5) C..&. 0x80) H.=== (0x80 :: C.Unsigned 8)
+    cpuStage s3             H.=== SFetch1
+    pc (cpuCore s3)         H.=== (0x0000 :: C.Unsigned 16)
+    (ie (cpuCore s3) C..&. 0x80) H.=== (0x80 :: C.Unsigned 8)
 
 -- ---------------------------------------------------------------------------
 -- Pipeline-level interrupt test (runPipeline)

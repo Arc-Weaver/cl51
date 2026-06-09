@@ -7,10 +7,9 @@ import Test.Tasty.TH
 import Test.Tasty.Hedgehog
 import qualified Hedgehog as H
 
-import Clash.Prelude (Bit, Unsigned)
+import Clash.Prelude (Unsigned)
 
-import MCS51.Core  (zeroState, CoreData(..), PSW(..), writeDirect, getReg)
-import MCS51.ALU   ()
+import MCS51.Core  (zeroState, CoreData(..), getReg)
 import MCS51.Exec  (runLinear, runWithPC)
 import MCS51.CPU   (CPUState(..), cpuStep, Stage(..))
 
@@ -138,20 +137,17 @@ prop_interruptAccepted = H.withTests 1 . H.property $ do
     (ie (cpuCore s1) `mod` 256 `div` 128) H.=== (0 :: Unsigned 8)
 
 -- | RETI must re-enable IE.EA (bit 7).
+--   RETI is a single-cycle instruction: it reads the return address from IRAM
+--   and restores IE.EA in one step.
 prop_retiRestoresEA :: H.Property
 prop_retiRestoresEA = H.withTests 1 . H.property $ do
     -- Start in ISR with IE.EA=0; RETI should re-enable it.
     let s0 = CPUState (zeroState { ie = 0x00 }) SFetch1
-    -- Fetch RETI (0x32) → startRet True
+    -- Fetch RETI (0x32): single-cycle, reads IRAM stack and restores IE.EA.
     let (s1, _) = cpuStep s0 (0x32, 0x00, Nothing)
-    cpuStage s1 H.=== SRetRead1 True
-    -- Pop hi byte
-    let (s2, _) = cpuStep s1 (0x00, 0x00, Nothing)
-    -- Pop lo byte → IE.EA restored
-    let (s3, _) = cpuStep s2 (0x00, 0x00, Nothing)
-    cpuStage s3 H.=== SFetch1
+    cpuStage s1 H.=== SFetch1
     -- IE.EA (bit 7) should be 1
-    (ie (cpuCore s3) `div` 128 `mod` 2) H.=== (1 :: Unsigned 8)
+    (ie (cpuCore s1) `div` 128 `mod` 2) H.=== (1 :: Unsigned 8)
 
 cpuTests :: TestTree
 cpuTests = $(testGroupGenerator)
