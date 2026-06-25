@@ -1,5 +1,6 @@
 packages:
   cl51.cabal
+  ../ISACLE/isacle.cabal
 
 write-ghc-environment-files: always
 
