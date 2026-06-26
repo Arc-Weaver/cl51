@@ -1,7 +1,7 @@
 module MCS51.ISA.Move where
 
 import Prelude hiding (Word)
-import Hdl.Bits
+import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice)
 import Isacle.ISA
 import MCS51.ISA.Types
 
@@ -16,7 +16,7 @@ movARnDef = do
     encoding "11101rrr"
     a <- cpu mcsA
     n <- immediate "rrr"
-    v <- readMem (n :: Unsigned 8)
+    v <- readMem (n :: IExpr 8)
     writeReg a v
 
 movADirDef :: MCS51 m => m ()
@@ -26,7 +26,7 @@ movADirDef = do
     encoding "11100101"
     a   <- cpu mcsA
     dir <- readOp 0
-    v   <- readMem (dir :: Unsigned 8)
+    v   <- readMem (dir :: IExpr 8)
     writeReg a v
     pcAdvance2
 
@@ -37,7 +37,7 @@ movAImmDef = do
     encoding "01110100"
     a   <- cpu mcsA
     imm <- readOp 0
-    writeReg a (imm :: Unsigned 8)
+    writeReg a (imm :: IExpr 8)
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ movRnADef = do
     a  <- cpu mcsA
     va <- readReg a
     n  <- immediate "rrr"
-    writeMem (n :: Unsigned 8) va
+    writeMem (n :: IExpr 8) va
 
 movDirADef :: MCS51 m => m ()
 movDirADef = do
@@ -62,7 +62,7 @@ movDirADef = do
     a   <- cpu mcsA
     va  <- readReg a
     dir <- readOp 0
-    writeMem (dir :: Unsigned 8) va
+    writeMem (dir :: IExpr 8) va
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ movRnImmDef = do
     encoding "01111rrr"
     n   <- immediate "rrr"
     imm <- readOp 0
-    writeMem (n :: Unsigned 8) (imm :: Unsigned 8)
+    writeMem (n :: IExpr 8) (imm :: IExpr 8)
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ movDirImmDef = do
     encoding "01110101"
     dir <- readOp 0
     imm <- readOp 1
-    writeMem (dir :: Unsigned 8) (imm :: Unsigned 8)
+    writeMem (dir :: IExpr 8) (imm :: IExpr 8)
     pcAdvance3
 
 -- ---------------------------------------------------------------------------
@@ -104,8 +104,8 @@ movDirDirDef = do
     encoding "10000101"
     src <- readOp 0
     dst <- readOp 1
-    v   <- readMem (src :: Unsigned 8)
-    writeMem (dst :: Unsigned 8) v
+    v   <- readMem (src :: IExpr 8)
+    writeMem (dst :: IExpr 8) v
     pcAdvance3
 
 -- ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ pushDirDef = do
     encoding "11000000"
     spR <- cpu mcsSP
     dir <- readOp 0
-    v   <- readMem (dir :: Unsigned 8)
+    v   <- readMem (dir :: IExpr 8)
     sp  <- readReg spR
     one <- litC 1
     sp1 <- aluOp PAdd sp one
@@ -139,7 +139,7 @@ popDirDef = do
     dir <- readOp 0
     sp  <- readReg spR
     v   <- readMem sp
-    writeMem (dir :: Unsigned 8) v
+    writeMem (dir :: IExpr 8) v
     one <- litC 1
     writeReg spR =<< aluOp PSub sp one
     pcAdvance2
@@ -155,7 +155,7 @@ xchARnDef = do
     encoding "11001rrr"
     a  <- cpu mcsA
     n  <- immediate "rrr"
-    let addr = n :: Unsigned 8
+    let addr = n :: IExpr 8
     va <- readReg a
     vr <- readMem addr
     writeReg a vr
@@ -168,7 +168,7 @@ xchADirDef = do
     encoding "11000101"
     a   <- cpu mcsA
     dir <- readOp 0
-    let addr = dir :: Unsigned 8
+    let addr = dir :: IExpr 8
     va  <- readReg a
     vd  <- readMem addr
     writeReg a vd

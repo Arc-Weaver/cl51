@@ -21,3 +21,14 @@ cabal.project.local
 cabal.project.local~
 .HTF/
 .ghc.environment.*
+
+# Generated synthesis/sim outputs (emitted VHDL, GHDL work libs, waveforms).
+# Hand-written testbenches under tests/ghdl/ and sim/ should be tracked.
+build/
+vhdl/
+work-obj08.cf
+*.cf
+*.vcd
+
+# Claude Code auto-memory (local to each developer's session)
+memory/

@@ -1,7 +1,7 @@
 module MCS51.ISA.Arith where
 
 import Prelude hiding (Word)
-import Hdl.Bits
+import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice)
 import Isacle.ISA
 import MCS51.ISA.Types
 
@@ -27,7 +27,7 @@ addARnDef = do
     a  <- cpu mcsA
     va <- readReg a
     n  <- immediate "rrr"
-    vr <- readMem (n :: Unsigned 8)
+    vr <- readMem (n :: IExpr 8)
     writeReg a =<< addArith va vr 0
 
 addADirDef :: MCS51 m => m ()
@@ -38,7 +38,7 @@ addADirDef = do
     a   <- cpu mcsA
     va  <- readReg a
     dir <- readOp 0
-    vd  <- readMem (dir :: Unsigned 8)
+    vd  <- readMem (dir :: IExpr 8)
     writeReg a =<< addArith va vd 0
     pcAdvance2
 
@@ -50,7 +50,7 @@ addAImmDef = do
     a   <- cpu mcsA
     va  <- readReg a
     imm <- readOp 0
-    writeReg a =<< addArith va (imm :: Unsigned 8) 0
+    writeReg a =<< addArith va (imm :: IExpr 8) 0
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ addcARnDef = do
     a   <- cpu mcsA
     va  <- readReg a
     n   <- immediate "rrr"
-    vr  <- readMem (n :: Unsigned 8)
+    vr  <- readMem (n :: IExpr 8)
     cy  <- getFlag =<< cpuFlag mcsCY
     writeReg a =<< addArith va vr cy
 
@@ -78,7 +78,7 @@ addcAImmDef = do
     va  <- readReg a
     imm <- readOp 0
     cy  <- getFlag =<< cpuFlag mcsCY
-    writeReg a =<< addArith va (imm :: Unsigned 8) cy
+    writeReg a =<< addArith va (imm :: IExpr 8) cy
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ subbARnDef = do
     a   <- cpu mcsA
     va  <- readReg a
     n   <- immediate "rrr"
-    vr  <- readMem (n :: Unsigned 8)
+    vr  <- readMem (n :: IExpr 8)
     cy  <- getFlag =<< cpuFlag mcsCY
     writeReg a =<< subbArith va vr cy
 
@@ -106,7 +106,7 @@ subbAImmDef = do
     va  <- readReg a
     imm <- readOp 0
     cy  <- getFlag =<< cpuFlag mcsCY
-    writeReg a =<< subbArith va (imm :: Unsigned 8) cy
+    writeReg a =<< subbArith va (imm :: IExpr 8) cy
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ incRnDef = do
     doc      "Increment register Rn"
     encoding "00001rrr"
     n  <- immediate "rrr"
-    let addr = n :: Unsigned 8
+    let addr = n :: IExpr 8
     v  <- readMem addr
     one <- litC 1
     writeMem addr =<< aluOp PAdd v one
@@ -140,7 +140,7 @@ incDirDef = do
     doc      "Increment direct byte"
     encoding "00000101"
     dir <- readOp 0
-    let addr = dir :: Unsigned 8
+    let addr = dir :: IExpr 8
     v   <- readMem addr
     one <- litC 1
     writeMem addr =<< aluOp PAdd v one
@@ -166,7 +166,7 @@ decRnDef = do
     doc      "Decrement register Rn"
     encoding "00011rrr"
     n  <- immediate "rrr"
-    let addr = n :: Unsigned 8
+    let addr = n :: IExpr 8
     v  <- readMem addr
     one <- litC 1
     writeMem addr =<< aluOp PSub v one
@@ -177,7 +177,7 @@ decDirDef = do
     doc      "Decrement direct byte"
     encoding "00010101"
     dir <- readOp 0
-    let addr = dir :: Unsigned 8
+    let addr = dir :: IExpr 8
     v   <- readMem addr
     one <- litC 1
     writeMem addr =<< aluOp PSub v one
@@ -197,9 +197,11 @@ mulABDef = do
     va <- readReg a
     vb <- readReg b
     -- 16-bit product: store low byte in A, high byte in B
-    prod <- aluOp PMul (zeroExtend va :: Unsigned 16) (zeroExtend vb)
+    prod <- aluOp PMul (zeroExtend va :: IExpr 16) (zeroExtend vb)
     writeReg a (truncateB prod)
-    writeReg b (truncateB (prod `shiftR` 8))
+    eight16 <- litC (8 :: Integer)
+    prodHi  <- aluOp PShiftR prod eight16
+    writeReg b (truncateB prodHi)
     stubFlags
 
 divABDef :: MCS51 m => m ()
