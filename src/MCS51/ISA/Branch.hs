@@ -1,7 +1,7 @@
 module MCS51.ISA.Branch where
 
 import Prelude hiding (Word)
-import Hdl.Bits
+import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice)
 import Isacle.ISA
 import MCS51.ISA.Types
 
@@ -15,8 +15,8 @@ import MCS51.ISA.Types
 relTarget :: MCS51 m
           => CPURegister 16
           -> Integer          -- ^ instruction size in bytes
-          -> Unsigned 8       -- ^ raw 8-bit relative offset
-          -> m (Unsigned 16)
+          -> IExpr 8       -- ^ raw 8-bit relative offset
+          -> m (IExpr 16)
 relTarget pcR instrSize rel = do
     p   <- readReg pcR
     k   <- signExtendBits rel
@@ -58,8 +58,8 @@ ajmpDef = do
     lo8   <- readOp 0          -- bits [7:0]
     -- build off11 as a 16-bit value
     eight <- litC (8 :: Integer)
-    hi3e  <- aluOp PShiftL (zeroExtend hi3 :: Unsigned 16) eight
-    off11 <- aluOp POr hi3e (zeroExtend lo8 :: Unsigned 16)
+    hi3e  <- aluOp PShiftL (zeroExtend (hi3 :: IExpr 3) :: IExpr 16) eight
+    off11 <- aluOp POr hi3e (zeroExtend lo8 :: IExpr 16)
     -- target = (PC+2) & 0xF800 | off11
     p     <- readReg pcR
     two   <- litC 2
@@ -136,7 +136,7 @@ djnzRnDef = do
     pcR  <- cpu mcsPC
     n    <- immediate "nnn"
     rel  <- readOp 0
-    let addr = n :: Unsigned 8
+    let addr = n :: IExpr 8
     v    <- readMem addr
     one  <- litC 1
     v'   <- aluOp PSub v one
@@ -154,7 +154,7 @@ djnzDirDef = do
     pcR  <- cpu mcsPC
     dir  <- readOp 0
     rel  <- readOp 1
-    let addr = dir :: Unsigned 8
+    let addr = dir :: IExpr 8
     v    <- readMem addr
     one  <- litC 1
     v'   <- aluOp PSub v one
@@ -182,14 +182,14 @@ lcallDef = do
     -- return address = PC + 3 (past opcode + 2 operand bytes)
     p     <- readReg pcR
     three <- litC 3
-    ret   <- aluOp PAdd p (three :: Unsigned 16)
+    ret   <- aluOp PAdd p (three :: IExpr 16)
     -- push PCL then PCH (8-bit data bus: two separate writes)
     sp    <- readReg spR
     one   <- litC 1
     sp1   <- aluOp PAdd sp one
     writeMem sp1 (truncateB ret)
     eight <- litC 8
-    retHi <- aluOp PShiftR ret (eight :: Unsigned 16)
+    retHi <- aluOp PShiftR ret (eight :: IExpr 16)
     sp2   <- aluOp PAdd sp1 one
     writeMem sp2 (truncateB retHi)
     writeReg spR sp2
@@ -207,20 +207,20 @@ acallDef = do
     -- return address = PC + 2 (past opcode + 1 operand byte)
     p     <- readReg pcR
     two   <- litC 2
-    ret   <- aluOp PAdd p (two :: Unsigned 16)
+    ret   <- aluOp PAdd p (two :: IExpr 16)
     -- push PCL then PCH
     sp    <- readReg spR
     one   <- litC 1
     sp1   <- aluOp PAdd sp one
     writeMem sp1 (truncateB ret)
     eight <- litC 8
-    retHi <- aluOp PShiftR ret (eight :: Unsigned 16)
+    retHi <- aluOp PShiftR ret (eight :: IExpr 16)
     sp2   <- aluOp PAdd sp1 one
     writeMem sp2 (truncateB retHi)
     writeReg spR sp2
     -- page-relative target: (ret & 0xF800) | (hi3 << 8 | lo8)
-    hi3e  <- aluOp PShiftL (zeroExtend hi3 :: Unsigned 16) eight
-    off11 <- aluOp POr hi3e (zeroExtend lo8 :: Unsigned 16)
+    hi3e  <- aluOp PShiftL (zeroExtend (hi3 :: IExpr 3) :: IExpr 16) eight
+    off11 <- aluOp POr hi3e (zeroExtend lo8 :: IExpr 16)
     mask  <- litC 0xF800
     base  <- aluOp PAnd ret mask
     tgt   <- aluOp POr base off11
@@ -240,10 +240,10 @@ retDef = do
     pcL <- readMem sp1
     sp2 <- aluOp PSub sp1 one
     writeReg spR sp2
-    let pcH16 = zeroExtend pcH :: Unsigned 16
-        pcL16 = zeroExtend pcL :: Unsigned 16
+    let pcH16 = zeroExtend pcH :: IExpr 16
+        pcL16 = zeroExtend pcL :: IExpr 16
     eight <- litC 8
-    pcHs  <- aluOp PShiftL pcH16 (eight :: Unsigned 16)
+    pcHs  <- aluOp PShiftL pcH16 (eight :: IExpr 16)
     tgt   <- aluOp POr pcHs pcL16
     absJump pcR tgt
 
@@ -261,9 +261,9 @@ retiDef = do
     pcL <- readMem sp1
     sp2 <- aluOp PSub sp1 one
     writeReg spR sp2
-    let pcH16 = zeroExtend pcH :: Unsigned 16
-        pcL16 = zeroExtend pcL :: Unsigned 16
+    let pcH16 = zeroExtend pcH :: IExpr 16
+        pcL16 = zeroExtend pcL :: IExpr 16
     eight <- litC 8
-    pcHs  <- aluOp PShiftL pcH16 (eight :: Unsigned 16)
+    pcHs  <- aluOp PShiftL pcH16 (eight :: IExpr 16)
     tgt   <- aluOp POr pcHs pcL16
     absJump pcR tgt

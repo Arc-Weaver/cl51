@@ -10,17 +10,18 @@ import Test.Tasty.TH
 import Test.Tasty.Hedgehog
 import qualified Hedgehog as H
 
-import Isacle.ISA (EncodingInfo(..), runCPUDef, ISADef(..))
+import Isacle.ISA (EncodingInfo(..), runCPUDef, ISADef(..), ISABuild)
 import Isacle.ISA.Backend.Sim
 
 import MCS51.ISA       (mcs51ISA)
 import MCS51.ISA.Types (mcs51CPUDef, MCS51ALU(..))
 
 -- ---------------------------------------------------------------------------
--- Type alias for the MCS-51 simulation monad
+-- Type alias for the MCS-51 instruction-body monad.  Bodies build an InstrIR
+-- which the Sim backend (execInstr/runInstr) interprets against a SimState.
 -- ---------------------------------------------------------------------------
 
-type M = SimM MCS51ALU 8 8 8 16
+type M = ISABuild MCS51ALU 8 8 8 16
 
 -- ---------------------------------------------------------------------------
 -- Pre-compute ALU record and instruction table at module load time
@@ -34,8 +35,9 @@ aluRec :: MCS51ALU
 --   the 'encoding' call is always the first thing an instruction body does.
 instrTable :: [(EncodingInfo, M ())]
 instrTable =
-    [ (enc body, body) | body <- isaInstrs mcs51ISA ]
+    [ (enc body, body) | body <- isaInstrs (mcs51ISA :: ISADef M) ]
   where
+    enc :: M () -> EncodingInfo
     enc body = case ssEncoding (execInstr aluRec 0 body) of
         Just e  -> e
         Nothing -> error "instruction body missing 'encoding' call"
