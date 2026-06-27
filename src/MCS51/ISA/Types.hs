@@ -7,6 +7,7 @@ module MCS51.ISA.Types
     ( MCS51ALU(..)
     , Psw(..)
     , Ie(..)
+    , Mcs51State(..)
     , mcs51CPUDef
     , MCS51
     , mcs51FlagAt
@@ -91,6 +92,27 @@ data Ie = Ie
 
 instance HdlType Ie where
     type Width Ie = GWidth (Rep Ie)
+    toBits   = genericToBits
+    fromBits = genericFromBits
+
+-- | The 8051 architectural state as one recursive 'HdlType' record (C1:
+-- "core satisfies HdlType"): scalar SFRs plus the nested 'Ie' and 'Psw' bit-map
+-- records and the 16-bit PC. Width = 6·8 + 8 + 8 + 16 = 80. The handle record
+-- ('MCS51ALU') still drives synthesis; this is the structural view (additive).
+data Mcs51State = Mcs51State
+    { msA   :: Unsigned 8
+    , msB   :: Unsigned 8
+    , msSP  :: Unsigned 8
+    , msDPL :: Unsigned 8
+    , msDPH :: Unsigned 8
+    , msIP  :: Unsigned 8
+    , msIE  :: Ie            -- nested bit-map record
+    , msPSW :: Psw           -- nested bit-map record
+    , msPC  :: Unsigned 16
+    } deriving Generic
+
+instance HdlType Mcs51State where
+    type Width Mcs51State = GWidth (Rep Mcs51State)
     toBits   = genericToBits
     fromBits = genericFromBits
 
