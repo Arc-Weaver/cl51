@@ -14,7 +14,7 @@ import MCS51.ISA.Types
 -- ---------------------------------------------------------------------------
 
 relTarget :: MCS51 m
-          => CPURegister 16
+          => CPURegister (Unsigned 16)
           -> Integer          -- ^ instruction size in bytes
           -> IExpr 8       -- ^ raw 8-bit relative offset
           -> m (IExpr 16)

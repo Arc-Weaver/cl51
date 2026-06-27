@@ -32,15 +32,15 @@ import Isacle.ISA
 -- ---------------------------------------------------------------------------
 
 data MCS51ALU = MCS51ALU
-    { mcsA    :: CPURegister 8    -- Accumulator          (SFR 0xE0)
-    , mcsB    :: CPURegister 8    -- B register           (SFR 0xF0)
-    , mcsSP   :: CPURegister 8    -- Stack pointer        (SFR 0x81)
-    , mcsDPL  :: CPURegister 8    -- Data pointer low     (SFR 0x82)
-    , mcsDPH  :: CPURegister 8    -- Data pointer high    (SFR 0x83)
-    , mcsIE   :: CPURegister 8    -- Interrupt enable     (SFR 0xA8)
-    , mcsIP   :: CPURegister 8    -- Interrupt priority   (SFR 0xB8)
-    , mcsPSW  :: CPURegister 8    -- Program status word  (SFR 0xD0)
-    , mcsPC   :: CPURegister 16   -- Program counter
+    { mcsA    :: CPURegister (Unsigned 8)    -- Accumulator          (SFR 0xE0)
+    , mcsB    :: CPURegister (Unsigned 8)    -- B register           (SFR 0xF0)
+    , mcsSP   :: CPURegister (Unsigned 8)    -- Stack pointer        (SFR 0x81)
+    , mcsDPL  :: CPURegister (Unsigned 8)    -- Data pointer low     (SFR 0x82)
+    , mcsDPH  :: CPURegister (Unsigned 8)    -- Data pointer high    (SFR 0x83)
+    , mcsIE   :: CPURegister (Unsigned 8)    -- Interrupt enable     (SFR 0xA8)
+    , mcsIP   :: CPURegister (Unsigned 8)    -- Interrupt priority   (SFR 0xB8)
+    , mcsPSW  :: CPURegister (Unsigned 8)    -- Program status word  (SFR 0xD0)
+    , mcsPC   :: CPURegister (Unsigned 16)   -- Program counter
     -- PSW flags, MSB-first: CY AC F0 RS1 RS0 OV F1 P
     , mcsCY   :: CPUFlag          -- Carry        (bit 7)
     , mcsAC   :: CPUFlag          -- Aux carry    (bit 6)
@@ -140,13 +140,28 @@ mcs51CPUDef = do
     dph' <- reg "DPH" byte
     ip'  <- reg "IP"  byte
     pc'  <- reg "PC"  w16
-    -- PSW/IE flags derive from the record layouts (MSB-first):
-    -- pfs = [CY@7, AC@6, F0@5, RS1@4, RS0@3, OV@2, F1@1, P@0].
-    (psw', pfs) <- flagRec @Psw "PSW"
-    let cy  = pfs!!0; ac  = pfs!!1; f0  = pfs!!2; rs1 = pfs!!3
-        rs0 = pfs!!4; ov  = pfs!!5; f1  = pfs!!6; p   = pfs!!7
-    (ie', ifs) <- flagRec @Ie "IE"
-    let iea = ifs!!0
+    psw' <- reg "PSW" byte
+    -- PSW flags are bits of PSW (MSB-first): CY@7 AC@6 F0@5 RS1@4 RS0@3 OV@2 F1@1 P@0.
+    cy  <- newFlag "CY"  (psw' ! 7)
+    ac  <- newFlag "AC"  (psw' ! 6)
+    f0  <- newFlag "F0"  (psw' ! 5)
+    rs1 <- newFlag "RS1" (psw' ! 4)
+    rs0 <- newFlag "RS0" (psw' ! 3)
+    ov  <- newFlag "OV"  (psw' ! 2)
+    f1  <- newFlag "F1"  (psw' ! 1)
+    p   <- newFlag "P"   (psw' ! 0)
+    ie'  <- reg "IE"  byte
+    -- IE flags (MSB-first): EA@7 IE6@6 ET2@5 ES@4 ET1@3 EX1@2 ET0@1 EX0@0. All
+    -- eight are declared so the status-register bit map is fully covered (only
+    -- EA is referenced by the ISA today).
+    iea <- newFlag "EA"  (ie' ! 7)
+    _   <- newFlag "IE6" (ie' ! 6)
+    _   <- newFlag "ET2" (ie' ! 5)
+    _   <- newFlag "ES"  (ie' ! 4)
+    _   <- newFlag "ET1" (ie' ! 3)
+    _   <- newFlag "EX1" (ie' ! 2)
+    _   <- newFlag "ET0" (ie' ! 1)
+    _   <- newFlag "EX0" (ie' ! 0)
     aliasReg a'   0xE0
     aliasReg b'   0xF0
     aliasReg sp'  0x81
