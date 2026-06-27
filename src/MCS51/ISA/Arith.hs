@@ -1,4 +1,5 @@
 module MCS51.ISA.Arith where
+{-# LANGUAGE TypeApplications #-}
 
 import Prelude hiding (Word)
 import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice)
@@ -24,22 +25,20 @@ addARnDef = do
     mnemonic "ADD"
     doc      "Add register to A: A = A + Rn"
     encoding "00101rrr"
-    a  <- cpu mcsA
-    va <- readReg a
+    va <- readField @"a"
     n  <- immediate "rrr"
     vr <- readMem (n :: IExpr 8)
-    writeReg a =<< addArith va vr 0
+    writeField @"a" =<< addArith va vr 0
 
 addADirDef :: MCS51 m => m ()
 addADirDef = do
     mnemonic "ADD"
     doc      "Add direct byte to A: A = A + [dir]"
     encoding "00100101"
-    a   <- cpu mcsA
-    va  <- readReg a
+    va  <- readField @"a"
     dir <- readOp 0
     vd  <- readMem (dir :: IExpr 8)
-    writeReg a =<< addArith va vd 0
+    writeField @"a" =<< addArith va vd 0
     pcAdvance2
 
 addAImmDef :: MCS51 m => m ()
@@ -47,10 +46,9 @@ addAImmDef = do
     mnemonic "ADD"
     doc      "Add immediate to A: A = A + #data"
     encoding "00100100"
-    a   <- cpu mcsA
-    va  <- readReg a
+    va  <- readField @"a"
     imm <- readOp 0
-    writeReg a =<< addArith va (imm :: IExpr 8) 0
+    writeField @"a" =<< addArith va (imm :: IExpr 8) 0
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -62,23 +60,21 @@ addcARnDef = do
     mnemonic "ADDC"
     doc      "Add register to A with carry: A = A + Rn + CY"
     encoding "00111rrr"
-    a   <- cpu mcsA
-    va  <- readReg a
+    va  <- readField @"a"
     n   <- immediate "rrr"
     vr  <- readMem (n :: IExpr 8)
     cy  <- getFlag =<< cpuFlag mcsCY
-    writeReg a =<< addArith va vr cy
+    writeField @"a" =<< addArith va vr cy
 
 addcAImmDef :: MCS51 m => m ()
 addcAImmDef = do
     mnemonic "ADDC"
     doc      "Add immediate to A with carry: A = A + #data + CY"
     encoding "00110100"
-    a   <- cpu mcsA
-    va  <- readReg a
+    va  <- readField @"a"
     imm <- readOp 0
     cy  <- getFlag =<< cpuFlag mcsCY
-    writeReg a =<< addArith va (imm :: IExpr 8) cy
+    writeField @"a" =<< addArith va (imm :: IExpr 8) cy
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -90,23 +86,21 @@ subbARnDef = do
     mnemonic "SUBB"
     doc      "Subtract register from A with borrow: A = A - Rn - CY"
     encoding "10011rrr"
-    a   <- cpu mcsA
-    va  <- readReg a
+    va  <- readField @"a"
     n   <- immediate "rrr"
     vr  <- readMem (n :: IExpr 8)
     cy  <- getFlag =<< cpuFlag mcsCY
-    writeReg a =<< subbArith va vr cy
+    writeField @"a" =<< subbArith va vr cy
 
 subbAImmDef :: MCS51 m => m ()
 subbAImmDef = do
     mnemonic "SUBB"
     doc      "Subtract immediate from A with borrow: A = A - #data - CY"
     encoding "10010100"
-    a   <- cpu mcsA
-    va  <- readReg a
+    va  <- readField @"a"
     imm <- readOp 0
     cy  <- getFlag =<< cpuFlag mcsCY
-    writeReg a =<< subbArith va (imm :: IExpr 8) cy
+    writeField @"a" =<< subbArith va (imm :: IExpr 8) cy
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -118,10 +112,9 @@ incADef = do
     mnemonic "INC"
     doc      "Increment A"
     encoding "00000100"
-    a  <- cpu mcsA
-    va <- readReg a
+    va <- readField @"a"
     one <- litC 1
-    writeReg a =<< aluOp PAdd va one
+    writeField @"a" =<< aluOp PAdd va one
 
 incRnDef :: MCS51 m => m ()
 incRnDef = do
@@ -155,10 +148,9 @@ decADef = do
     mnemonic "DEC"
     doc      "Decrement A"
     encoding "00010100"
-    a  <- cpu mcsA
-    va <- readReg a
+    va <- readField @"a"
     one <- litC 1
-    writeReg a =<< aluOp PSub va one
+    writeField @"a" =<< aluOp PSub va one
 
 decRnDef :: MCS51 m => m ()
 decRnDef = do
@@ -192,16 +184,14 @@ mulABDef = do
     mnemonic "MUL"
     doc      "Multiply A by B: BA = A * B (unsigned 8x8→16)"
     encoding "10100100"
-    a  <- cpu mcsA
-    b  <- cpu mcsB
-    va <- readReg a
-    vb <- readReg b
+    va <- readField @"a"
+    vb <- readField @"b"
     -- 16-bit product: store low byte in A, high byte in B
     prod <- aluOp PMul (zeroExtend va :: IExpr 16) (zeroExtend vb)
-    writeReg a (truncateB prod)
+    writeField @"a" (truncateB prod)
     eight16 <- litC (8 :: Integer)
     prodHi  <- aluOp PShiftR prod eight16
-    writeReg b (truncateB prodHi)
+    writeField @"b" (truncateB prodHi)
     stubFlags
 
 divABDef :: MCS51 m => m ()
@@ -209,11 +199,9 @@ divABDef = do
     mnemonic "DIV"
     doc      "Divide A by B: A = quotient, B = remainder"
     encoding "10000100"
-    a  <- cpu mcsA
-    b  <- cpu mcsB
-    va <- readReg a
-    vb <- readReg b
+    va <- readField @"a"
+    vb <- readField @"b"
     -- integer division (PSub approximation — real DIV needs PDiv, stubbed)
     q  <- aluOp PSub va vb   -- placeholder: not real division
-    writeReg a q
+    writeField @"a" q
     stubFlags

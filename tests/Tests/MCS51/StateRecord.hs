@@ -36,13 +36,13 @@ sampleState = Mcs51State 0xAA 0xBB 0x07 0x12 0x34 0x56
 prop_state_roundtrip :: H.Property
 prop_state_roundtrip = H.withTests 1 . H.property $ do
     let s = fromBits (toBits sampleState) :: Mcs51State
-    msA  s H.=== 0xAA
-    msPC s H.=== 0x1234
+    a  s H.=== 0xAA
+    pc s H.=== 0x1234
     -- nested bit-map records survive
-    pCY (msPSW s) H.=== 1
-    pP  (msPSW s) H.=== 1
-    iEA (msIE s)  H.=== 1
-    iES (msIE s)  H.=== 1
+    pCY (psw s) H.=== 1
+    pP  (psw s) H.=== 1
+    iEA (ie s)  H.=== 1
+    iES (ie s)  H.=== 1
 
 stateRecordTests :: TestTree
 stateRecordTests = $(testGroupGenerator)

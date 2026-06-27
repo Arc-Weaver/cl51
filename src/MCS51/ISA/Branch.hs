@@ -1,4 +1,5 @@
 module MCS51.ISA.Branch where
+{-# LANGUAGE TypeApplications #-}
 
 import Prelude hiding (Word)
 import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice)
@@ -104,7 +105,7 @@ jzDef = do
     doc      "Jump if A == 0"
     encoding "01100000"
     pcR <- cpu mcsPC
-    va  <- readReg =<< cpu mcsA
+    va  <- readField @"a"
     rel <- readOp 0
     tgt <- relTarget pcR 2 rel
     z   <- isZero va
@@ -117,7 +118,7 @@ jnzDef = do
     doc      "Jump if A != 0"
     encoding "01110000"
     pcR <- cpu mcsPC
-    va  <- readReg =<< cpu mcsA
+    va  <- readField @"a"
     rel <- readOp 0
     tgt <- relTarget pcR 2 rel
     nz  <- isZero =<< isZero va
@@ -177,14 +178,13 @@ lcallDef = do
     doc      "Long call: push return PC, jump to addr16"
     encoding "00010010"
     pcR   <- cpu mcsPC
-    spR   <- cpu mcsSP
     tgt   <- readOp16
     -- return address = PC + 3 (past opcode + 2 operand bytes)
     p     <- readReg pcR
     three <- litC 3
     ret   <- aluOp PAdd p (three :: IExpr 16)
     -- push PCL then PCH (8-bit data bus: two separate writes)
-    sp    <- readReg spR
+    sp    <- readField @"sp"
     one   <- litC 1
     sp1   <- aluOp PAdd sp one
     writeMem sp1 (truncateB ret)
@@ -192,7 +192,7 @@ lcallDef = do
     retHi <- aluOp PShiftR ret (eight :: IExpr 16)
     sp2   <- aluOp PAdd sp1 one
     writeMem sp2 (truncateB retHi)
-    writeReg spR sp2
+    writeField @"sp" sp2
     absJump pcR tgt
 
 acallDef :: MCS51 m => m ()
@@ -201,7 +201,6 @@ acallDef = do
     doc      "Absolute call within 2 KB page"
     encoding "aaa10001"
     pcR   <- cpu mcsPC
-    spR   <- cpu mcsSP
     hi3   <- immediate "aaa"   -- bits [10:8] of the 11-bit offset
     lo8   <- readOp 0          -- bits [7:0]
     -- return address = PC + 2 (past opcode + 1 operand byte)
@@ -209,7 +208,7 @@ acallDef = do
     two   <- litC 2
     ret   <- aluOp PAdd p (two :: IExpr 16)
     -- push PCL then PCH
-    sp    <- readReg spR
+    sp    <- readField @"sp"
     one   <- litC 1
     sp1   <- aluOp PAdd sp one
     writeMem sp1 (truncateB ret)
@@ -217,7 +216,7 @@ acallDef = do
     retHi <- aluOp PShiftR ret (eight :: IExpr 16)
     sp2   <- aluOp PAdd sp1 one
     writeMem sp2 (truncateB retHi)
-    writeReg spR sp2
+    writeField @"sp" sp2
     -- page-relative target: (ret & 0xF800) | (hi3 << 8 | lo8)
     hi3e  <- aluOp PShiftL (zeroExtendC (hi3 :: IExpr 3) :: IExpr 16) eight
     off11 <- aluOp POr hi3e (zeroExtend lo8 :: IExpr 16)
@@ -232,14 +231,13 @@ retDef = do
     doc      "Return from subroutine"
     encoding "00100010"
     pcR <- cpu mcsPC
-    spR <- cpu mcsSP
-    sp  <- readReg spR
+    sp  <- readField @"sp"
     one <- litC 1
     pcH <- readMem sp
     sp1 <- aluOp PSub sp one
     pcL <- readMem sp1
     sp2 <- aluOp PSub sp1 one
-    writeReg spR sp2
+    writeField @"sp" sp2
     let pcH16 = zeroExtend pcH :: IExpr 16
         pcL16 = zeroExtend pcL :: IExpr 16
     eight <- litC 8
@@ -253,14 +251,13 @@ retiDef = do
     doc      "Return from interrupt"
     encoding "00110010"
     pcR <- cpu mcsPC
-    spR <- cpu mcsSP
-    sp  <- readReg spR
+    sp  <- readField @"sp"
     one <- litC 1
     pcH <- readMem sp
     sp1 <- aluOp PSub sp one
     pcL <- readMem sp1
     sp2 <- aluOp PSub sp1 one
-    writeReg spR sp2
+    writeField @"sp" sp2
     let pcH16 = zeroExtend pcH :: IExpr 16
         pcL16 = zeroExtend pcL :: IExpr 16
     eight <- litC 8

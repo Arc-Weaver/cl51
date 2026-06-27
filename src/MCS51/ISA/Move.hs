@@ -1,4 +1,5 @@
 module MCS51.ISA.Move where
+{-# LANGUAGE TypeApplications #-}
 
 import Prelude hiding (Word)
 import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice)
@@ -14,20 +15,18 @@ movARnDef = do
     mnemonic "MOV"
     doc      "Move Rn to A"
     encoding "11101rrr"
-    a <- cpu mcsA
     n <- immediate "rrr"
     v <- readMem (n :: IExpr 8)
-    writeReg a v
+    writeField @"a" v
 
 movADirDef :: MCS51 m => m ()
 movADirDef = do
     mnemonic "MOV"
     doc      "Move direct byte to A"
     encoding "11100101"
-    a   <- cpu mcsA
     dir <- readOp 0
     v   <- readMem (dir :: IExpr 8)
-    writeReg a v
+    writeField @"a" v
     pcAdvance2
 
 movAImmDef :: MCS51 m => m ()
@@ -35,9 +34,8 @@ movAImmDef = do
     mnemonic "MOV"
     doc      "Move immediate to A: A = #data"
     encoding "01110100"
-    a   <- cpu mcsA
     imm <- readOp 0
-    writeReg a (imm :: IExpr 8)
+    writeField @"a" (imm :: IExpr 8)
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -49,8 +47,7 @@ movRnADef = do
     mnemonic "MOV"
     doc      "Move A to Rn"
     encoding "11111rrr"
-    a  <- cpu mcsA
-    va <- readReg a
+    va <- readField @"a"
     n  <- immediate "rrr"
     writeMem (n :: IExpr 8) va
 
@@ -59,8 +56,7 @@ movDirADef = do
     mnemonic "MOV"
     doc      "Move A to direct byte"
     encoding "11110101"
-    a   <- cpu mcsA
-    va  <- readReg a
+    va  <- readField @"a"
     dir <- readOp 0
     writeMem (dir :: IExpr 8) va
     pcAdvance2
@@ -120,13 +116,12 @@ pushDirDef = do
     mnemonic "PUSH"
     doc      "Push direct byte onto stack"
     encoding "11000000"
-    spR <- cpu mcsSP
     dir <- readOp 0
     v   <- readMem (dir :: IExpr 8)
-    sp  <- readReg spR
+    sp  <- readField @"sp"
     one <- litC 1
     sp1 <- aluOp PAdd sp one
-    writeReg spR sp1
+    writeField @"sp" sp1
     writeMem sp1 v
     pcAdvance2
 
@@ -135,13 +130,12 @@ popDirDef = do
     mnemonic "POP"
     doc      "Pop stack into direct byte"
     encoding "11010000"
-    spR <- cpu mcsSP
     dir <- readOp 0
-    sp  <- readReg spR
+    sp  <- readField @"sp"
     v   <- readMem sp
     writeMem (dir :: IExpr 8) v
     one <- litC 1
-    writeReg spR =<< aluOp PSub sp one
+    writeField @"sp" =<< aluOp PSub sp one
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -153,12 +147,11 @@ xchARnDef = do
     mnemonic "XCH"
     doc      "Exchange A with Rn"
     encoding "11001rrr"
-    a  <- cpu mcsA
     n  <- immediate "rrr"
     let addr = n :: IExpr 8
-    va <- readReg a
+    va <- readField @"a"
     vr <- readMem addr
-    writeReg a vr
+    writeField @"a" vr
     writeMem addr va
 
 xchADirDef :: MCS51 m => m ()
@@ -166,11 +159,10 @@ xchADirDef = do
     mnemonic "XCH"
     doc      "Exchange A with direct byte"
     encoding "11000101"
-    a   <- cpu mcsA
     dir <- readOp 0
     let addr = dir :: IExpr 8
-    va  <- readReg a
+    va  <- readField @"a"
     vd  <- readMem addr
-    writeReg a vd
+    writeField @"a" vd
     writeMem addr va
     pcAdvance2
