@@ -1,7 +1,12 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 module MCS51.ISA.Types
     ( MCS51ALU(..)
+    , Psw(..)
+    , Ie(..)
     , mcs51CPUDef
     , MCS51
     , mcs51FlagAt
@@ -15,8 +20,10 @@ module MCS51.ISA.Types
     ) where
 
 import Prelude hiding (Word)
+import GHC.Generics (Generic, Rep)
 
 import Hdl.Bits hiding ((!!), zeroExtend, signExtend, truncateB, bitCoerce, slice)
+import Hdl.Types (HdlType(..), GWidth, genericToBits, genericFromBits)
 import Isacle.ISA
 
 -- ---------------------------------------------------------------------------
@@ -47,6 +54,47 @@ data MCS51ALU = MCS51ALU
     }
 
 -- ---------------------------------------------------------------------------
+-- PSW and IE as bit-map record HdlTypes (C2/C5)
+-- Declaration order is MSB-first, so the first field is bit 7 … last is bit 0.
+-- 'flagRec' derives each flag's bit position from the record layout — no
+-- separate bit-index list.
+-- ---------------------------------------------------------------------------
+
+-- | Program status word (SFR 0xD0): CY AC F0 RS1 RS0 OV F1 P, MSB-first.
+data Psw = Psw
+    { pCY  :: Bit   -- ^ bit 7 — carry
+    , pAC  :: Bit   -- ^ bit 6 — auxiliary carry
+    , pF0  :: Bit   -- ^ bit 5 — user flag 0
+    , pRS1 :: Bit   -- ^ bit 4 — register bank select 1
+    , pRS0 :: Bit   -- ^ bit 3 — register bank select 0
+    , pOV  :: Bit   -- ^ bit 2 — overflow
+    , pF1  :: Bit   -- ^ bit 1 — user flag 1
+    , pP   :: Bit   -- ^ bit 0 — parity
+    } deriving Generic
+
+instance HdlType Psw where
+    type Width Psw = GWidth (Rep Psw)
+    toBits   = genericToBits
+    fromBits = genericFromBits
+
+-- | Interrupt enable (SFR 0xA8): EA – ET2 ES ET1 EX1 ET0 EX0, MSB-first.
+data Ie = Ie
+    { iEA  :: Bit   -- ^ bit 7 — global interrupt enable
+    , iIE6 :: Bit   -- ^ bit 6 — (reserved / IE.6)
+    , iET2 :: Bit   -- ^ bit 5 — timer 2 interrupt enable
+    , iES  :: Bit   -- ^ bit 4 — serial interrupt enable
+    , iET1 :: Bit   -- ^ bit 3 — timer 1 interrupt enable
+    , iEX1 :: Bit   -- ^ bit 2 — external interrupt 1 enable
+    , iET0 :: Bit   -- ^ bit 1 — timer 0 interrupt enable
+    , iEX0 :: Bit   -- ^ bit 0 — external interrupt 0 enable
+    } deriving Generic
+
+instance HdlType Ie where
+    type Width Ie = GWidth (Rep Ie)
+    toBits   = genericToBits
+    fromBits = genericFromBits
+
+-- ---------------------------------------------------------------------------
 -- CPUDef
 --
 -- Internal address space (DataAddr ~ IExpr 8):
@@ -68,10 +116,12 @@ mcs51CPUDef = do
     dph' <- reg "DPH" byte
     ip'  <- reg "IP"  byte
     pc'  <- reg "PC"  w16
-    (psw', pfs) <- flagPack @8 "PSW" ["CY","AC","F0","RS1","RS0","OV","F1","P"]
+    -- PSW/IE flags derive from the record layouts (MSB-first):
+    -- pfs = [CY@7, AC@6, F0@5, RS1@4, RS0@3, OV@2, F1@1, P@0].
+    (psw', pfs) <- flagRec @Psw "PSW"
     let cy  = pfs!!0; ac  = pfs!!1; f0  = pfs!!2; rs1 = pfs!!3
         rs0 = pfs!!4; ov  = pfs!!5; f1  = pfs!!6; p   = pfs!!7
-    (ie', ifs) <- flagPack @8 "IE" ["EA","IE6","ET2","ES","ET1","EX1","ET0","EX0"]
+    (ie', ifs) <- flagRec @Ie "IE"
     let iea = ifs!!0
     aliasReg a'   0xE0
     aliasReg b'   0xF0
