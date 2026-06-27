@@ -116,9 +116,7 @@ instance HdlType Mcs51State where
     toBits   = genericToBits
     fromBits = genericFromBits
 
--- | The 8051 handle record stands for the typed 'Mcs51State', so the framework's
 -- 'readField'/'writeField' reach a register by its state field name.
-type instance CoreState MCS51ALU = Mcs51State
 
 -- ---------------------------------------------------------------------------
 -- CPUDef

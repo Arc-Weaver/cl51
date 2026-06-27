@@ -17,7 +17,7 @@ movARnDef = do
     encoding "11101rrr"
     n <- immediate "rrr"
     v <- readMem (n :: IExpr 8)
-    writeField @"a" v
+    writeField mcsA v
 
 movADirDef :: MCS51 m => m ()
 movADirDef = do
@@ -26,7 +26,7 @@ movADirDef = do
     encoding "11100101"
     dir <- readOp 0
     v   <- readMem (dir :: IExpr 8)
-    writeField @"a" v
+    writeField mcsA v
     pcAdvance2
 
 movAImmDef :: MCS51 m => m ()
@@ -35,7 +35,7 @@ movAImmDef = do
     doc      "Move immediate to A: A = #data"
     encoding "01110100"
     imm <- readOp 0
-    writeField @"a" (imm :: IExpr 8)
+    writeField mcsA (imm :: IExpr 8)
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ movRnADef = do
     mnemonic "MOV"
     doc      "Move A to Rn"
     encoding "11111rrr"
-    va <- readField @"a"
+    va <- readField mcsA
     n  <- immediate "rrr"
     writeMem (n :: IExpr 8) va
 
@@ -56,7 +56,7 @@ movDirADef = do
     mnemonic "MOV"
     doc      "Move A to direct byte"
     encoding "11110101"
-    va  <- readField @"a"
+    va  <- readField mcsA
     dir <- readOp 0
     writeMem (dir :: IExpr 8) va
     pcAdvance2
@@ -118,10 +118,10 @@ pushDirDef = do
     encoding "11000000"
     dir <- readOp 0
     v   <- readMem (dir :: IExpr 8)
-    sp  <- readField @"sp"
+    sp  <- readField mcsSP
     one <- litC 1
     sp1 <- aluOp PAdd sp one
-    writeField @"sp" sp1
+    writeField mcsSP sp1
     writeMem sp1 v
     pcAdvance2
 
@@ -131,11 +131,11 @@ popDirDef = do
     doc      "Pop stack into direct byte"
     encoding "11010000"
     dir <- readOp 0
-    sp  <- readField @"sp"
+    sp  <- readField mcsSP
     v   <- readMem sp
     writeMem (dir :: IExpr 8) v
     one <- litC 1
-    writeField @"sp" =<< aluOp PSub sp one
+    writeField mcsSP =<< aluOp PSub sp one
     pcAdvance2
 
 -- ---------------------------------------------------------------------------
@@ -149,9 +149,9 @@ xchARnDef = do
     encoding "11001rrr"
     n  <- immediate "rrr"
     let addr = n :: IExpr 8
-    va <- readField @"a"
+    va <- readField mcsA
     vr <- readMem addr
-    writeField @"a" vr
+    writeField mcsA vr
     writeMem addr va
 
 xchADirDef :: MCS51 m => m ()
@@ -161,8 +161,8 @@ xchADirDef = do
     encoding "11000101"
     dir <- readOp 0
     let addr = dir :: IExpr 8
-    va  <- readField @"a"
+    va  <- readField mcsA
     vd  <- readMem addr
-    writeField @"a" vd
+    writeField mcsA vd
     writeMem addr va
     pcAdvance2
