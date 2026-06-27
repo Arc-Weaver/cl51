@@ -58,7 +58,7 @@ ajmpDef = do
     lo8   <- readOp 0          -- bits [7:0]
     -- build off11 as a 16-bit value
     eight <- litC (8 :: Integer)
-    hi3e  <- aluOp PShiftL (zeroExtend (hi3 :: IExpr 3) :: IExpr 16) eight
+    hi3e  <- aluOp PShiftL (zeroExtendC (hi3 :: IExpr 3) :: IExpr 16) eight
     off11 <- aluOp POr hi3e (zeroExtend lo8 :: IExpr 16)
     -- target = (PC+2) & 0xF800 | off11
     p     <- readReg pcR
@@ -219,7 +219,7 @@ acallDef = do
     writeMem sp2 (truncateB retHi)
     writeReg spR sp2
     -- page-relative target: (ret & 0xF800) | (hi3 << 8 | lo8)
-    hi3e  <- aluOp PShiftL (zeroExtend (hi3 :: IExpr 3) :: IExpr 16) eight
+    hi3e  <- aluOp PShiftL (zeroExtendC (hi3 :: IExpr 3) :: IExpr 16) eight
     off11 <- aluOp POr hi3e (zeroExtend lo8 :: IExpr 16)
     mask  <- litC 0xF800
     base  <- aluOp PAnd ret mask
