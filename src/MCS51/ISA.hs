@@ -11,7 +11,8 @@ module MCS51.ISA
     ) where
 
 import Prelude hiding (Word)
-import Hdl.Bits
+import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice, add, mul, shiftL, shiftR, xor, (.&.), (.|.))
+import Hdl.Types (HdlType)
 import Isacle.ISA
 import MCS51.ISA.Types
 import MCS51.ISA.Arith
@@ -26,7 +27,7 @@ import MCS51.ISA.Branch
 -- Gates on the global interrupt enable (IE.7 / IEA), pushes the 16-bit PC
 -- as two bytes (low then high) onto the 8-bit stack, then jumps to the
 -- externally-supplied vector address.
-mcs51IrqBody :: (MCS51 m, MonadIRQ m, KnownNat (IrqAddrW m)) => m ()
+mcs51IrqBody :: (MCS51 m, MonadIRQ m, HdlType (IrqAddr m)) => m ()
 mcs51IrqBody = do
     irqGate (readFlag mcsIEA)
     pcR  <- cpu mcsPC
@@ -35,7 +36,7 @@ mcs51IrqBody = do
     eight <- litC 8
     lo   <- resizeBits pc              -- Unsigned 16 → Unsigned 8
     push spR lo
-    hiRaw <- aluOp PShiftR pc eight
+    let hiRaw = shiftR pc eight
     hi   <- resizeBits hiRaw           -- Unsigned 16 → Unsigned 8
     push spR hi
     vec   <- irqVector
@@ -46,7 +47,7 @@ mcs51IrqBody = do
 -- ISA definition
 -- ---------------------------------------------------------------------------
 
-mcs51ISA :: (MCS51 m, MonadIRQ m, KnownNat (IrqAddrW m)) => ISADef m
+mcs51ISA :: (MCS51 m, MonadIRQ m, HdlType (IrqAddr m)) => ISADef m
 mcs51ISA = defineISA ISADef
     { isaPc            = SomeCPURegister <$> cpu mcsPC
     , isaInterruptBody = Just mcs51IrqBody

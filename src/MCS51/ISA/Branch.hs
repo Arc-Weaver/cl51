@@ -2,7 +2,7 @@ module MCS51.ISA.Branch where
 {-# LANGUAGE TypeApplications #-}
 
 import Prelude hiding (Word)
-import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice)
+import Hdl.Bits hiding (zeroExtend, signExtend, truncateB, bitCoerce, slice, add, mul, shiftL, shiftR, xor, (.&.), (.|.))
 import Isacle.ISA
 import MCS51.ISA.Types
 
@@ -16,14 +16,13 @@ import MCS51.ISA.Types
 relTarget :: MCS51 m
           => CPURegister (Unsigned 16)
           -> Integer          -- ^ instruction size in bytes
-          -> IExpr 8       -- ^ raw 8-bit relative offset
-          -> m (IExpr 16)
+          -> IExpr (Unsigned 8)       -- ^ raw 8-bit relative offset
+          -> m (IExpr (Unsigned 16))
 relTarget pcR instrSize rel = do
     p   <- readReg pcR
     k   <- signExtendBits rel
     adj <- litC instrSize
-    p'  <- aluOp PAdd p adj
-    aluOp PAdd p' k
+    pure (p + adj + k)
 
 -- ---------------------------------------------------------------------------
 -- Unconditional jumps
@@ -33,7 +32,7 @@ sjmpDef :: MCS51 m => m ()
 sjmpDef = do
     mnemonic "SJMP"
     doc      "Short relative jump"
-    encoding "10000000"
+    defineInstruction $ fixed "10000000"
     pcR <- cpu mcsPC
     rel <- readOp 0
     tgt <- relTarget pcR 2 rel
@@ -43,7 +42,7 @@ ljmpDef :: MCS51 m => m ()
 ljmpDef = do
     mnemonic "LJMP"
     doc      "Long absolute jump to addr16"
-    encoding "00000010"
+    defineInstruction $ fixed "00000010"
     pcR <- cpu mcsPC
     tgt <- readOp16
     absJump pcR tgt
@@ -53,21 +52,21 @@ ajmpDef :: MCS51 m => m ()
 ajmpDef = do
     mnemonic "AJMP"
     doc      "Absolute jump within 2 KB page"
-    encoding "aaa00001"
+    pg <- defineInstruction $ pageField "00001"
     pcR   <- cpu mcsPC
-    hi3   <- immediate "aaa"   -- bits [10:8] of the 11-bit offset
+    let hi3 = immediateF pg :: IExpr (Unsigned 3)   -- bits [10:8] of the 11-bit offset
     lo8   <- readOp 0          -- bits [7:0]
     -- build off11 as a 16-bit value
     eight <- litC (8 :: Integer)
-    hi3e  <- aluOp PShiftL (zeroExtendC (hi3 :: IExpr 3) :: IExpr 16) eight
-    off11 <- aluOp POr hi3e (zeroExtend lo8 :: IExpr 16)
+    let hi3e  = shiftL (zeroExtendC (hi3 :: IExpr (Unsigned 3)) :: IExpr (Unsigned 16)) eight
+        off11 = hi3e .|. (zeroExtend lo8 :: IExpr (Unsigned 16))
     -- target = (PC+2) & 0xF800 | off11
     p     <- readReg pcR
     two   <- litC 2
-    pNext <- aluOp PAdd p two
+    let pNext = p + two
     mask  <- litC 0xF800
-    base  <- aluOp PAnd pNext mask
-    tgt   <- aluOp POr base off11
+    let base = pNext .&. mask
+        tgt  = base .|. off11
     absJump pcR tgt
 
 -- ---------------------------------------------------------------------------
@@ -78,7 +77,7 @@ jcDef :: MCS51 m => m ()
 jcDef = do
     mnemonic "JC"
     doc      "Jump if carry set"
-    encoding "01000000"
+    defineInstruction $ fixed "01000000"
     pcR <- cpu mcsPC
     cy  <- getFlag =<< cpuFlag mcsCY
     rel <- readOp 0
@@ -90,7 +89,7 @@ jncDef :: MCS51 m => m ()
 jncDef = do
     mnemonic "JNC"
     doc      "Jump if carry clear"
-    encoding "01010000"
+    defineInstruction $ fixed "01010000"
     pcR <- cpu mcsPC
     cy  <- getFlag =<< cpuFlag mcsCY
     rel <- readOp 0
@@ -103,7 +102,7 @@ jzDef :: MCS51 m => m ()
 jzDef = do
     mnemonic "JZ"
     doc      "Jump if A == 0"
-    encoding "01100000"
+    defineInstruction $ fixed "01100000"
     pcR <- cpu mcsPC
     va  <- readField mcsA
     rel <- readOp 0
@@ -116,7 +115,7 @@ jnzDef :: MCS51 m => m ()
 jnzDef = do
     mnemonic "JNZ"
     doc      "Jump if A != 0"
-    encoding "01110000"
+    defineInstruction $ fixed "01110000"
     pcR <- cpu mcsPC
     va  <- readField mcsA
     rel <- readOp 0
@@ -133,14 +132,14 @@ djnzRnDef :: MCS51 m => m ()
 djnzRnDef = do
     mnemonic "DJNZ"
     doc      "Decrement Rn; jump if not zero"
-    encoding "11011nnn"
+    r <- defineInstruction $ regField "11011"
     pcR  <- cpu mcsPC
-    n    <- immediate "nnn"
+    let n = regAddr r
     rel  <- readOp 0
-    let addr = n :: IExpr 8
+    let addr = n :: IExpr (Unsigned 8)
     v    <- readMem addr
     one  <- litC 1
-    v'   <- aluOp PSub v one
+    let v' = v - one
     writeMem addr v'
     tgt  <- relTarget pcR 2 rel
     nz   <- isZero =<< isZero v'
@@ -151,14 +150,14 @@ djnzDirDef :: MCS51 m => m ()
 djnzDirDef = do
     mnemonic "DJNZ"
     doc      "Decrement direct; jump if not zero"
-    encoding "11010101"
+    defineInstruction $ fixed "11010101"
     pcR  <- cpu mcsPC
     dir  <- readOp 0
     rel  <- readOp 1
-    let addr = dir :: IExpr 8
+    let addr = dir :: IExpr (Unsigned 8)
     v    <- readMem addr
     one  <- litC 1
-    v'   <- aluOp PSub v one
+    let v' = v - one
     writeMem addr v'
     tgt  <- relTarget pcR 3 rel
     nz   <- isZero =<< isZero v'
@@ -176,21 +175,21 @@ lcallDef :: MCS51 m => m ()
 lcallDef = do
     mnemonic "LCALL"
     doc      "Long call: push return PC, jump to addr16"
-    encoding "00010010"
+    defineInstruction $ fixed "00010010"
     pcR   <- cpu mcsPC
     tgt   <- readOp16
     -- return address = PC + 3 (past opcode + 2 operand bytes)
     p     <- readReg pcR
     three <- litC 3
-    ret   <- aluOp PAdd p (three :: IExpr 16)
+    let ret = p + (three :: IExpr (Unsigned 16))
     -- push PCL then PCH (8-bit data bus: two separate writes)
     sp    <- readField mcsSP
     one   <- litC 1
-    sp1   <- aluOp PAdd sp one
+    let sp1 = sp + one
     writeMem sp1 (truncateB ret)
     eight <- litC 8
-    retHi <- aluOp PShiftR ret (eight :: IExpr 16)
-    sp2   <- aluOp PAdd sp1 one
+    let retHi = shiftR ret (eight :: IExpr (Unsigned 16))
+        sp2   = sp1 + one
     writeMem sp2 (truncateB retHi)
     writeField mcsSP sp2
     absJump pcR tgt
@@ -199,68 +198,68 @@ acallDef :: MCS51 m => m ()
 acallDef = do
     mnemonic "ACALL"
     doc      "Absolute call within 2 KB page"
-    encoding "aaa10001"
+    pg <- defineInstruction $ pageField "10001"
     pcR   <- cpu mcsPC
-    hi3   <- immediate "aaa"   -- bits [10:8] of the 11-bit offset
+    let hi3 = immediateF pg :: IExpr (Unsigned 3)   -- bits [10:8] of the 11-bit offset
     lo8   <- readOp 0          -- bits [7:0]
     -- return address = PC + 2 (past opcode + 1 operand byte)
     p     <- readReg pcR
     two   <- litC 2
-    ret   <- aluOp PAdd p (two :: IExpr 16)
+    let ret = p + (two :: IExpr (Unsigned 16))
     -- push PCL then PCH
     sp    <- readField mcsSP
     one   <- litC 1
-    sp1   <- aluOp PAdd sp one
+    let sp1 = sp + one
     writeMem sp1 (truncateB ret)
     eight <- litC 8
-    retHi <- aluOp PShiftR ret (eight :: IExpr 16)
-    sp2   <- aluOp PAdd sp1 one
+    let retHi = shiftR ret (eight :: IExpr (Unsigned 16))
+        sp2   = sp1 + one
     writeMem sp2 (truncateB retHi)
     writeField mcsSP sp2
     -- page-relative target: (ret & 0xF800) | (hi3 << 8 | lo8)
-    hi3e  <- aluOp PShiftL (zeroExtendC (hi3 :: IExpr 3) :: IExpr 16) eight
-    off11 <- aluOp POr hi3e (zeroExtend lo8 :: IExpr 16)
+    let hi3e  = shiftL (zeroExtendC (hi3 :: IExpr (Unsigned 3)) :: IExpr (Unsigned 16)) eight
+        off11 = hi3e .|. (zeroExtend lo8 :: IExpr (Unsigned 16))
     mask  <- litC 0xF800
-    base  <- aluOp PAnd ret mask
-    tgt   <- aluOp POr base off11
+    let base = ret .&. mask
+        tgt  = base .|. off11
     absJump pcR tgt
 
 retDef :: MCS51 m => m ()
 retDef = do
     mnemonic "RET"
     doc      "Return from subroutine"
-    encoding "00100010"
+    defineInstruction $ fixed "00100010"
     pcR <- cpu mcsPC
     sp  <- readField mcsSP
     one <- litC 1
     pcH <- readMem sp
-    sp1 <- aluOp PSub sp one
+    let sp1 = sp - one
     pcL <- readMem sp1
-    sp2 <- aluOp PSub sp1 one
+    let sp2 = sp1 - one
     writeField mcsSP sp2
-    let pcH16 = zeroExtend pcH :: IExpr 16
-        pcL16 = zeroExtend pcL :: IExpr 16
+    let pcH16 = zeroExtend pcH :: IExpr (Unsigned 16)
+        pcL16 = zeroExtend pcL :: IExpr (Unsigned 16)
     eight <- litC 8
-    pcHs  <- aluOp PShiftL pcH16 (eight :: IExpr 16)
-    tgt   <- aluOp POr pcHs pcL16
+    let pcHs = shiftL pcH16 (eight :: IExpr (Unsigned 16))
+        tgt  = pcHs .|. pcL16
     absJump pcR tgt
 
 retiDef :: MCS51 m => m ()
 retiDef = do
     mnemonic "RETI"
     doc      "Return from interrupt"
-    encoding "00110010"
+    defineInstruction $ fixed "00110010"
     pcR <- cpu mcsPC
     sp  <- readField mcsSP
     one <- litC 1
     pcH <- readMem sp
-    sp1 <- aluOp PSub sp one
+    let sp1 = sp - one
     pcL <- readMem sp1
-    sp2 <- aluOp PSub sp1 one
+    let sp2 = sp1 - one
     writeField mcsSP sp2
-    let pcH16 = zeroExtend pcH :: IExpr 16
-        pcL16 = zeroExtend pcL :: IExpr 16
+    let pcH16 = zeroExtend pcH :: IExpr (Unsigned 16)
+        pcL16 = zeroExtend pcL :: IExpr (Unsigned 16)
     eight <- litC 8
-    pcHs  <- aluOp PShiftL pcH16 (eight :: IExpr 16)
-    tgt   <- aluOp POr pcHs pcL16
+    let pcHs = shiftL pcH16 (eight :: IExpr (Unsigned 16))
+        tgt  = pcHs .|. pcL16
     absJump pcR tgt

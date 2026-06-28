@@ -18,12 +18,15 @@ module MCS51.ISA.Types
     , addArith
     , subbArith
     , stubFlags
+    , regField
+    , pageField
+    , regAddr
     ) where
 
 import Prelude hiding (Word)
 import GHC.Generics (Generic, Rep)
 
-import Hdl.Bits hiding ((!!), zeroExtend, signExtend, truncateB, bitCoerce, slice)
+import Hdl.Bits hiding ((!!), zeroExtend, signExtend, truncateB, bitCoerce, slice, add, mul, shiftL, shiftR, xor, (.&.), (.|.))
 import Hdl.Types (HdlType(..), GWidth, genericToBits, genericFromBits)
 import Isacle.ISA
 
@@ -121,7 +124,7 @@ instance HdlType Mcs51State where
 -- ---------------------------------------------------------------------------
 -- CPUDef
 --
--- Internal address space (DataAddr ~ IExpr 8):
+-- Internal address space (DataAddr ~ IExpr (Unsigned 8)):
 --   0x00-0x7F  IRAM (lower 128 bytes; register banks live at 0x00-0x1F)
 --   0x80-0xFF  SFRs (intercepted by aliasReg)
 --
@@ -184,8 +187,8 @@ mcs51CPUDef = do
 -- ---------------------------------------------------------------------------
 
 type MCS51 m = ( MonadHarvardALU m, AluDef m ~ MCS51ALU
-               , Word m ~ IExpr 8, DataAddr m ~ IExpr 8
-               , CodeAddr m ~ IExpr 16, CodeWord m ~ IExpr 8 )
+               , Word m ~ IExpr (Unsigned 8), DataAddr m ~ IExpr (Unsigned 8)
+               , CodeAddr m ~ IExpr (Unsigned 16), CodeWord m ~ IExpr (Unsigned 8) )
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -211,27 +214,52 @@ advance n = do
     pcR <- cpu mcsPC
     p   <- readReg pcR
     k   <- litC (fromInteger n)
-    writeReg pcR =<< aluOp PAdd p k
+    writeReg pcR (p + k)
 
 -- | Read the nth operand byte after the opcode (n=0 → byte immediately after
 --   the opcode, n=1 → the byte after that).  PC must not have been modified
 --   before this call.
-readOp :: MCS51 m => Integer -> m (IExpr 8)
+readOp :: MCS51 m => Integer -> m (IExpr (Unsigned 8))
 readOp n = do
     pcR  <- cpu mcsPC
     p    <- readReg pcR
     off  <- litC (n + 1)
-    readCode =<< aluOp PAdd p off
+    readCode (p + off)
 
 -- | Read a big-endian 16-bit address from operand bytes 0 and 1
 --   (byte 0 = high byte, byte 1 = low byte).
-readOp16 :: MCS51 m => m (IExpr 16)
+readOp16 :: MCS51 m => m (IExpr (Unsigned 16))
 readOp16 = do
     hi    <- readOp 0
     lo    <- readOp 1
     eight <- litC (8 :: Integer)
-    hiW   <- aluOp PShiftL (zeroExtend hi :: IExpr 16) eight
-    aluOp POr hiW (zeroExtend lo)
+    let hiW = shiftL (zeroExtend hi :: IExpr (Unsigned 16)) eight
+    pure (hiW .|. zeroExtend lo)
+
+-- ---------------------------------------------------------------------------
+-- Encoding-DSL helpers (typed field placeholders, replacing string encodings)
+-- ---------------------------------------------------------------------------
+
+-- | An opcode with a 3-bit register selector in the low bits: @\<5 fixed\>rrr@
+-- (the @rrr@\/@nnn@ register-select field).  Returns the field placeholder.
+regField :: String -> Encoding (Field (Unsigned 3))
+regField pre = do
+    fixed pre
+    field @(Unsigned 3)
+
+-- | An opcode with a 3-bit page selector in the /high/ bits: @aaa\<5 fixed\>@
+-- (ACALL\/AJMP).  Returns the field placeholder.
+pageField :: String -> Encoding (Field (Unsigned 3))
+pageField suf = do
+    pg <- field @(Unsigned 3)
+    fixed suf
+    return pg
+
+-- | The data-memory address of register @Rn@ selected by a 3-bit field: the
+-- field value zero-extended to a full 8-bit internal-RAM address (R0–R7 of the
+-- current bank live at 0x00–0x07).
+regAddr :: Field (Unsigned 3) -> IExpr (Unsigned 8)
+regAddr f = zeroExtend (immediateF f)
 
 -- | Stub the arithmetic flags (CY, AC, OV, P) to zero — synthesis
 -- placeholder until proper carry-chain logic is wired in.
@@ -242,84 +270,83 @@ stubFlags = do
     mapM_ (\f -> setFlag f z) [mcsCY alu, mcsAC alu, mcsOV alu, mcsP alu]
 
 -- | XOR-reduce an 8-bit value to its parity bit (1 = odd number of ones).
-parityBit :: MCS51 m => IExpr 8 -> m (IExpr 1)
+parityBit :: MCS51 m => IExpr (Unsigned 8) -> m (IExpr Bool)
 parityBit v = do
     four <- litC 4
     two  <- litC 2
     one  <- litC 1
-    p4 <- aluOp PXor v  =<< aluOp PShiftR v  four
-    p2 <- aluOp PXor p4 =<< aluOp PShiftR p4 two
-    p1 <- aluOp PXor p2 =<< aluOp PShiftR p2 one
+    let p4 = xor v  (shiftR v  four)
+        p2 = xor p4 (shiftR p4 two)
+        p1 = xor p2 (shiftR p2 one)
     return (truncateB p1)
 
 -- | Compute A + B + cyIn, set CY / AC / OV / P, return 8-bit result.
 -- Uses a 9-bit literal anchor (z9) so the VHDL emitter infers a 9-bit sum
 -- and preserves the carry-out bit.
-addArith :: MCS51 m => IExpr 8 -> IExpr 8 -> IExpr 1 -> m (IExpr 8)
+addArith :: MCS51 m => IExpr (Unsigned 8) -> IExpr (Unsigned 8) -> IExpr Bool -> m (IExpr (Unsigned 8))
 addArith a b cyIn = do
     -- 9-bit sum for CY: z9 forces the output wire to 9 bits.
     z9   <- litC 0
-    cy9  <- aluOp PAdd (zeroExtend cyIn :: IExpr 9) z9
-    bc9  <- aluOp PAdd (zeroExtend b    :: IExpr 9) cy9
-    sum9 <- aluOp PAdd (zeroExtend a    :: IExpr 9) bc9
+    let cy9  = (zeroExtend cyIn :: IExpr (Unsigned 9)) + z9
+        bc9  = (zeroExtend b    :: IExpr (Unsigned 9)) + cy9
+        sum9 = (zeroExtend a    :: IExpr (Unsigned 9)) + bc9
     eight <- litC 8
-    bit8  <- aluOp PShiftR sum9 eight
+    let bit8 = shiftR sum9 eight
     writeFlag mcsCY (truncateB bit8)
     -- AC: nibble half-carry — (a&F) + (b&F) + cy in 8 bits; bit 4 = AC.
     mskF <- litC 0x0F
     four <- litC 4
-    alo  <- aluOp PAnd a mskF
-    blo  <- aluOp PAnd b mskF
-    hal  <- aluOp PAdd alo =<< aluOp PAdd blo (zeroExtend cyIn :: IExpr 8)
-    bit4 <- aluOp PShiftR hal four
+    let alo = a .&. mskF
+        blo = b .&. mskF
+        hal = alo + (blo + (zeroExtend cyIn :: IExpr (Unsigned 8)))
+        bit4 = shiftR hal four
     writeFlag mcsAC (truncateB bit4)
-    let r = truncateB sum9 :: IExpr 8
+    let r = truncateB sum9 :: IExpr (Unsigned 8)
     -- OV: same-sign inputs, different-sign result.
     seven <- litC 7
-    a7  <- aluOp PShiftR a seven
-    b7  <- aluOp PShiftR b seven
-    r7  <- aluOp PShiftR r seven
-    xab <- aluOp PXor a7 b7
-    xar <- aluOp PXor a7 r7
+    let a7  = shiftR a seven
+        b7  = shiftR b seven
+        r7  = shiftR r seven
+        xab = xor a7 b7
+        xar = xor a7 r7
     sns <- isZero xab
-    ov  <- aluOp PAnd (zeroExtend sns :: IExpr 8) xar
+    let ov = (zeroExtend sns :: IExpr (Unsigned 8)) .&. xar
     writeFlag mcsOV (truncateB ov)
     writeFlag mcsP =<< parityBit r
     return r
 
 -- | Compute A - B - cyIn (SUBB), set CY / AC / OV / P, return result.
 -- Uses two's-complement: A + ~B + ~cyIn.  CY = borrow = NOT bit8 of 9-bit sum.
-subbArith :: MCS51 m => IExpr 8 -> IExpr 8 -> IExpr 1 -> m (IExpr 8)
+subbArith :: MCS51 m => IExpr (Unsigned 8) -> IExpr (Unsigned 8) -> IExpr Bool -> m (IExpr (Unsigned 8))
 subbArith a b cyIn = do
-    zero <- litC 0
-    notB  <- aluOp PNot b zero
-    notCy <- isZero (zeroExtend cyIn :: IExpr 8)
+    let notB = inv b
+    notCy <- isZero (zeroExtend cyIn :: IExpr (Unsigned 8))
     -- 9-bit sum: A + ~B + ~cyIn
     z9    <- litC 0
-    ncy9  <- aluOp PAdd (zeroExtend notCy :: IExpr 9) z9
-    nb9   <- aluOp PAdd (zeroExtend notB  :: IExpr 9) ncy9
-    sum9  <- aluOp PAdd (zeroExtend a     :: IExpr 9) nb9
+    let ncy9 = (zeroExtend notCy :: IExpr (Unsigned 9)) + z9
+        nb9  = (zeroExtend notB  :: IExpr (Unsigned 9)) + ncy9
+        sum9 = (zeroExtend a     :: IExpr (Unsigned 9)) + nb9
     eight <- litC 8
-    bit8  <- aluOp PShiftR sum9 eight
+    let bit8 = shiftR sum9 eight
     -- borrow when carry-out is absent (bit8 = 0)
     writeFlag mcsCY =<< isZero bit8
     -- AC: half-borrow from nibble; same complement trick.
     mskF   <- litC 0x0F
     four   <- litC 4
-    alo    <- aluOp PAnd a    mskF
-    notBlo <- aluOp PAnd notB mskF
-    hal    <- aluOp PAdd alo =<< aluOp PAdd notBlo (zeroExtend notCy :: IExpr 8)
-    bit4   <- aluOp PShiftR hal four
+    let alo    = a    .&. mskF
+        notBlo = notB .&. mskF
+        hal    = alo + (notBlo + (zeroExtend notCy :: IExpr (Unsigned 8)))
+        bit4   = shiftR hal four
     writeFlag mcsAC =<< isZero bit4
-    let r = truncateB sum9 :: IExpr 8
+    let r = truncateB sum9 :: IExpr (Unsigned 8)
     -- OV: different-sign inputs, sign change in result.
     seven <- litC 7
-    a7  <- aluOp PShiftR a seven
-    b7  <- aluOp PShiftR b seven
-    r7  <- aluOp PShiftR r seven
-    xab <- aluOp PXor a7 b7
-    xar <- aluOp PXor a7 r7
-    ov  <- aluOp PAnd xab xar
+    let a7  = shiftR a seven
+        b7  = shiftR b seven
+        r7  = shiftR r seven
+        xab = xor a7 b7
+        xar = xor a7 r7
+        ov  = xab .&. xar
     writeFlag mcsOV (truncateB ov)
     writeFlag mcsP =<< parityBit r
     return r
