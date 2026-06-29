@@ -60,6 +60,7 @@ test-suite test-library
   main-is: unittests.hs
   other-modules:
     Tests.MCS51.ISASim
+    Tests.MCS51.StateRecord
   build-depends:
     cl51,
     isacle,
